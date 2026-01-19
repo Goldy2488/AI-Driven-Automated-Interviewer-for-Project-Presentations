@@ -39,10 +39,17 @@ const stateConfig = {
     color: "text-ai-speaking",
     bgColor: "bg-ai-speaking/10",
   },
+  analyzing: {
+    icon: Brain,
+    title: "Analyzing",
+    message: "Processing your presentation and generating questions...",
+    color: "text-ai-thinking",
+    bgColor: "bg-ai-thinking/10",
+  },
 };
 
 export function AIStatusDisplay({ state, interviewerName = "AI Interviewer", className }: AIStatusDisplayProps) {
-  const config = stateConfig[state];
+  const config = stateConfig[state] || stateConfig.idle;
   const Icon = config.icon;
 
   return (

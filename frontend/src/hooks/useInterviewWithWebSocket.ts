@@ -1,8 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
-import { useWebSocket } from './useWebSocket';
+import { useWebSocket, AIState } from './useWebSocket';
 
 export type InterviewStage = 'intro' | 'presentation' | 'questions' | 'completed';
-export type AIState = "idle" | "listening" | "thinking" | "speaking";
 
 export interface Message {
   id: string;
@@ -10,6 +9,7 @@ export interface Message {
   content: string;
   timestamp: Date;
   isCurrentQuestion?: boolean;
+  questions?: string[]; // Array of questions for Q&A stage
 }
 
 export interface PresentationData {
@@ -30,10 +30,12 @@ export const useInterviewWithWebSocket = () => {
 
   // WebSocket handlers
   const handleAIMessage = useCallback((data: any) => {
+    console.log('💬 AI message handler called with data:', data);
+    
     const aiMessage: Message = {
       id: `msg-${messageIdCounter.current++}`,
       role: 'ai',
-      content: data.content,
+      content: data.message || data.content || 'AI response received',
       timestamp: new Date(data.timestamp),
       isCurrentQuestion: true,
     };
@@ -59,21 +61,53 @@ export const useInterviewWithWebSocket = () => {
   }, []);
 
   const handlePresentationAnalyzed = useCallback((data: any) => {
-    const analysisMessage: Message = {
-      id: `msg-${messageIdCounter.current++}`,
-      role: 'ai',
-      content: data.analysis,
-      timestamp: new Date(data.timestamp),
-      isCurrentQuestion: true,
-    };
+    console.log('📊 Presentation analyzed data received:', data);
     
-    setMessages(prev => {
-      const updated = prev.map(m => ({ ...m, isCurrentQuestion: false }));
-      return [...updated, analysisMessage];
-    });
-    
-    setStage('questions');
-    setIsProcessing(false);
+    // Check if we have questions array (new format)
+    if (data.questions && Array.isArray(data.questions)) {
+      console.log(`✅ Received ${data.questions.length} questions`);
+      
+      // Create a message with all questions
+      const questionsMessage: Message = {
+        id: `msg-${messageIdCounter.current++}`,
+        role: 'ai',
+        content: `Thank you for your presentation! Now I'd like to ask you ${data.questions.length} technical questions:\n\n` +
+                 data.questions.map((q: string, i: number) => `**Question ${i + 1}:** ${q}`).join('\n\n'),
+        timestamp: new Date(data.timestamp),
+        isCurrentQuestion: true,
+        questions: data.questions, // Store questions array for later use
+      };
+      
+      setMessages(prev => {
+        const updated = prev.map(m => ({ ...m, isCurrentQuestion: false }));
+        return [...updated, questionsMessage];
+      });
+      
+      setStage('questions');
+      setIsProcessing(false);
+    } 
+    // Fallback for old analysis format
+    else if (data.analysis) {
+      const analysisMessage: Message = {
+        id: `msg-${messageIdCounter.current++}`,
+        role: 'ai',
+        content: data.analysis,
+        timestamp: new Date(data.timestamp),
+        isCurrentQuestion: true,
+      };
+      
+      setMessages(prev => {
+        const updated = prev.map(m => ({ ...m, isCurrentQuestion: false }));
+        return [...updated, analysisMessage];
+      });
+      
+      setStage('questions');
+      setIsProcessing(false);
+    } else {
+      console.error('❌ Unexpected presentation data format:', data);
+      setError('Failed to process presentation analysis');
+      setIsProcessing(false);
+    }
   }, []);
 
   const handleError = useCallback((error: any) => {

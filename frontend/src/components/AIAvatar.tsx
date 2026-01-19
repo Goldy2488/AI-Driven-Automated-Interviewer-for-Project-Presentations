@@ -49,9 +49,14 @@ export function AIAvatar({
       icon: <Volume2 size={iconSize[size]} className="text-ai-speaking" />,
       pulseClass: "",
     },
+    analyzing: {
+      ringClass: "ring-ai-thinking",
+      icon: <Brain size={iconSize[size]} className="text-ai-thinking" />,
+      pulseClass: "animate-pulse",
+    },
   };
 
-  const config = stateConfig[state];
+  const config = stateConfig[state] || stateConfig.idle;
 
   return (
     <div className={cn("relative inline-flex", className)}>

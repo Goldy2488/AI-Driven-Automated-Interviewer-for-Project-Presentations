@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 
-export type AIState = "idle" | "listening" | "thinking" | "speaking";
+export type AIState = "idle" | "listening" | "thinking" | "speaking" | "analyzing";
 
 interface UseWebSocketProps {
   onMessage?: (data: any) => void;
@@ -21,23 +21,32 @@ export const useWebSocket = ({
   const [aiState, setAiState] = useState<AIState>("idle");
 
   useEffect(() => {
-    // Connect to WebSocket server
+    console.log('🔌 Initializing WebSocket connection...');
+    
+    // Create socket connection with better configuration
     const socket = io('http://localhost:5000', {
-      transports: ['polling', 'websocket'], // Try polling first, then upgrade to websocket
-      reconnectionAttempts: 5,
+      transports: ['websocket', 'polling'], // Try websocket first, fallback to polling
+      reconnection: true,
       reconnectionDelay: 1000,
+      reconnectionAttempts: 5,
       timeout: 10000,
       autoConnect: true,
     });
 
     socketRef.current = socket;
 
-    // Connection handlers
+    // Connection successful
     socket.on('connect', () => {
       console.log('✅ WebSocket connected', socket.id);
       setIsConnected(true);
     });
 
+    // Connection acknowledgment from server
+    socket.on('connection_ack', (data) => {
+      console.log('🤝 Connection acknowledged:', data);
+    });
+
+    // Disconnected
     socket.on('disconnect', (reason) => {
       console.log('❌ WebSocket disconnected:', reason);
       setIsConnected(false);
@@ -50,22 +59,34 @@ export const useWebSocket = ({
     });
 
     // AI message handler
-    socket.on('ai-message', (data) => {
+    socket.on('ai_message', (data) => {
       console.log('💬 AI message received:', data);
       onMessage?.(data);
     });
 
     // AI state change handler
-    socket.on('ai-state-change', (data) => {
+    socket.on('ai_state_change', (data) => {
       console.log('🔄 AI state changed:', data.state);
       setAiState(data.state);
       onStateChange?.(data.state);
     });
 
-    // Presentation analyzed handler
-    socket.on('presentation-analyzed', (data) => {
+    // Questions generated after presentation
+    socket.on('questions_generated', (data) => {
+      console.log('❓ Questions generated:', data);
+      onPresentationAnalyzed?.(data);
+    });
+
+    // Presentation analyzed handler (legacy)
+    socket.on('presentation_analyzed', (data) => {
       console.log('🎥 Presentation analyzed:', data);
       onPresentationAnalyzed?.(data);
+    });
+
+    // Interview error handler
+    socket.on('interview_error', (error) => {
+      console.error('❌ Interview error:', error);
+      onError?.(error);
     });
 
     // Error handler
@@ -83,8 +104,8 @@ export const useWebSocket = ({
   // Start interview
   const startInterview = useCallback((studentName: string, projectTitle: string) => {
     if (socketRef.current?.connected) {
-      console.log('🎬 Starting interview via WebSocket...');
-      socketRef.current.emit('start-interview', { studentName, projectTitle });
+      console.log('🎬 Starting interview via WebSocket...', { studentName, projectTitle });
+      socketRef.current.emit('start_interview', { studentName, projectTitle });
     } else {
       console.error('❌ WebSocket not connected');
     }
@@ -94,7 +115,7 @@ export const useWebSocket = ({
   const sendUserResponse = useCallback((content: string, stage: string, context?: any) => {
     if (socketRef.current?.connected) {
       console.log('💬 Sending user response via WebSocket...');
-      socketRef.current.emit('user-response', { content, stage, context });
+      socketRef.current.emit('user_response', { message: content, stage, context });
     } else {
       console.error('❌ WebSocket not connected');
     }
@@ -107,8 +128,12 @@ export const useWebSocket = ({
     ocrText?: string;
   }) => {
     if (socketRef.current?.connected) {
-      console.log('🎥 Sending presentation for analysis via WebSocket...');
-      socketRef.current.emit('analyze-presentation', data);
+      console.log('🎥 Sending presentation for analysis via WebSocket...', {
+        hasTranscript: !!data.transcript,
+        hasScreenImage: !!data.screenImage,
+        hasOcrText: !!data.ocrText
+      });
+      socketRef.current.emit('presentation_data', data);
     } else {
       console.error('❌ WebSocket not connected');
     }
